@@ -34,31 +34,53 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Uses WorldEdit to:
- * 1) snapshot the target region (biome-aware) to a .schem file before building,
- * 2) paste the configured grave schematic (with optional biome overrides),
- * 3) restore the snapshot .schem on removal, or clear the footprint if no snapshot exists.
+ * WorldEdit-backed schematic provider that can snapshot, paste, and restore grave builds.
+ * <p>Flow:</p>
+ * <ol>
+ *   <li>Optionally snapshot the target region to a <code>.schem</code>.</li>
+ *   <li>Paste the grave schematic (biome-aware overrides supported).</li>
+ *   <li>On removal, restore the snapshot or clear the pasted footprint.</li>
+ * </ol>
  */
 final class WorldEditSnapshotProvider implements GraveProvider {
+
+    /** Module context for logging, config, and scheduler access. */
     private final ModuleContext ctx;
 
+    /** Default grave schematic file. */
     private final File graveSchem;
+    /** If true, air blocks in the schematic are ignored when pasting. */
     private final boolean ignoreAir;
+    /** World paste offsets. */
     private final int offX, offY, offZ;
 
+    /** Enables capture and restore of the pre-paste region. */
     private final boolean snapEnabled;
+    /** Directory to store snapshot schematics. */
     private final File snapDir;
+    /** If true, snapshot region matches clipboard size; otherwise a fixed box is used. */
     private final boolean useGraveSize;
+    /** Fixed snapshot box size (used when {@link #useGraveSize} is false). */
     private final int boxX, boxY, boxZ;
 
+    /** Anchor material used to mark that a paste occurred. */
     private final Material anchorMat;
+    /** Anchor block offsets relative to the grave location. */
     private final int anchorOffX, anchorOffY, anchorOffZ;
 
+    /** Default grave clipboard (loaded from {@link #graveSchem}). */
     private volatile Clipboard graveClipboard;
 
+    /** Mapping of biome to override schematic file. */
     private final Map<Biome, File> biomeSchemFiles = new HashMap<>();
+    /** Cache of loaded override clipboards by biome. */
     private final Map<Biome, Clipboard> biomeClipboards = new ConcurrentHashMap<>();
 
+    /**
+     * Creates a provider and reads configuration (schematics, snapshot, and anchor settings).
+     *
+     * @param ctx module context providing config, logger, and scheduling utilities
+     */
     WorldEditSnapshotProvider(ModuleContext ctx) {
         this.ctx = ctx;
 
@@ -113,6 +135,12 @@ final class WorldEditSnapshotProvider implements GraveProvider {
         loadGraveClipboard();
     }
 
+    /**
+     * Resolves a {@link Biome} from a key like {@code minecraft:plains}, {@code PLAINS}, or {@code plains}.
+     *
+     * @param raw biome key string
+     * @return resolved biome or {@code null} if unknown
+     */
     private Biome resolveBiome(String raw) {
         if (raw == null || raw.isBlank()) return null;
 
@@ -160,14 +188,22 @@ final class WorldEditSnapshotProvider implements GraveProvider {
         }
     }
 
+    /** {@inheritDoc} */
     @Override public String id() {
         return "worldedit:grave";
     }
 
+    /** {@inheritDoc} */
     @Override public int order() {
         return 1000;
     }
 
+    /**
+     * Pastes the grave schematic at the given location and writes a snapshot beforehand if enabled.
+     *
+     * @param loc   paste base location (usually the death location)
+     * @param grave grave metadata used for snapshot naming and context
+     */
     @Override
     public void place(Location loc, Grave grave) {
         if (valid(loc)) return;
@@ -226,6 +262,11 @@ final class WorldEditSnapshotProvider implements GraveProvider {
         });
     }
 
+    /**
+     * Removes a previously pasted grave by restoring a snapshot or clearing the pasted region.
+     *
+     * @param grave grave whose region should be restored or cleared
+     */
     @Override
     public void remove(Grave grave) {
         Location loc = grave.getLocationDeath();
@@ -298,6 +339,12 @@ final class WorldEditSnapshotProvider implements GraveProvider {
         });
     }
 
+    /**
+     * Checks whether the grave is considered placed by testing the anchor block.
+     *
+     * @param grave grave to test
+     * @return true if the anchor block matches {@link #anchorMat}
+     */
     @Override
     public boolean isPlaced(Grave grave) {
         Location loc = grave.getLocationDeath();
@@ -310,17 +357,37 @@ final class WorldEditSnapshotProvider implements GraveProvider {
         return b.getType() == anchorMat;
     }
 
+    /**
+     * This provider does not manage entity data.
+     *
+     * @param data entity data
+     * @return always false
+     */
     @Override public boolean supports(EntityData data) {
         return false;
     }
+
+    /**
+     * This provider does not manage entity data.
+     *
+     * @param data entity data
+     * @return always false
+     */
     @Override public boolean removeEntityData(EntityData data) {
         return false;
     }
 
+    /**
+     * Returns true if the location or its world is null.
+     *
+     * @param loc location to validate
+     * @return true if invalid
+     */
     private boolean valid(Location loc) {
         return loc == null || loc.getWorld() == null;
     }
 
+    /** Loads the default grave clipboard from disk, logging on failure. */
     private void loadGraveClipboard() {
         if (!graveSchem.exists()) {
             ctx.getLogger().warning("[Schematics] Missing grave schematic: " + graveSchem.getPath());
@@ -334,6 +401,13 @@ final class WorldEditSnapshotProvider implements GraveProvider {
         }
     }
 
+    /**
+     * Resolves the clipboard to use at a position, honoring biome overrides.
+     *
+     * @param bw          Bukkit world
+     * @param pasteAnchor paste anchor position
+     * @return clipboard for the biome or the default clipboard
+     */
     private Clipboard resolveClipboardForBiome(org.bukkit.World bw, BlockVector3 pasteAnchor) {
         if (biomeSchemFiles.isEmpty()) return graveClipboard;
 
@@ -359,6 +433,13 @@ final class WorldEditSnapshotProvider implements GraveProvider {
         }
     }
 
+    /**
+     * Samples the biome at the given position, supporting legacy API where needed.
+     *
+     * @param bw  Bukkit world
+     * @param pos position to sample
+     * @return biome at position
+     */
     private Biome sampleBiomeAt(org.bukkit.World bw, BlockVector3 pos) {
         try {
             return bw.getBiome(pos.x(), pos.y(), pos.z());
@@ -367,6 +448,13 @@ final class WorldEditSnapshotProvider implements GraveProvider {
         }
     }
 
+    /**
+     * Loads a clipboard from a file using WorldEdit's format detection.
+     *
+     * @param file .schem file
+     * @return loaded clipboard
+     * @throws Exception if reading fails or format is unknown
+     */
     private Clipboard loadClipboard(File file) throws Exception {
         ClipboardFormat fmt = ClipboardFormats.findByFile(file);
         if (fmt == null) throw new IllegalStateException("Unknown clipboard format: " + file.getName());
@@ -376,6 +464,14 @@ final class WorldEditSnapshotProvider implements GraveProvider {
         }
     }
 
+    /**
+     * Saves a region from the world into a schematic file, including biomes and entities.
+     *
+     * @param weWorld worldedit world
+     * @param region  region to copy
+     * @param outFile destination file
+     * @throws Exception if copying or writing fails
+     */
     private void saveRegionToSchematic(World weWorld, CuboidRegion region, File outFile) throws Exception {
         Clipboard clipboard = new BlockArrayClipboard(region);
         clipboard.setOrigin(region.getMinimumPoint());
@@ -406,6 +502,13 @@ final class WorldEditSnapshotProvider implements GraveProvider {
         }
     }
 
+    /**
+     * Builds a region in world space that aligns to the bounds of a clipboard at a paste anchor.
+     *
+     * @param clip        clipboard to align with
+     * @param pasteAnchor origin for alignment
+     * @return aligned cuboid region
+     */
     private CuboidRegion regionAlignedToClipboard(Clipboard clip, BlockVector3 pasteAnchor) {
         BlockVector3 clipMin = clip.getRegion().getMinimumPoint();
         BlockVector3 clipMax = clip.getRegion().getMaximumPoint();
@@ -419,6 +522,15 @@ final class WorldEditSnapshotProvider implements GraveProvider {
         return new CuboidRegion(worldMin, worldMax);
     }
 
+    /**
+     * Builds a fixed-size region whose minimum corner starts at the given position.
+     *
+     * @param to anchor position
+     * @param sx size X
+     * @param sy size Y
+     * @param sz size Z
+     * @return cuboid region with the specified size
+     */
     private CuboidRegion regionFromBoxAt(BlockVector3 to, int sx, int sy, int sz) {
         BlockVector3 min = to;
         BlockVector3 max;

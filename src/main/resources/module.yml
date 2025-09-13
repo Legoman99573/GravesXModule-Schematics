@@ -1,6 +1,6 @@
 name: Schematics
 main: dev.cwhead.GravesX.modules.schematics.SchematicsModule
-version: 1.1.0
+version: 1.0.0
 pluginSoftDepends:
   - WorldEdit
   - FastAsyncWorldEdit
