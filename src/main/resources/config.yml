@@ -1,0 +1,24 @@
+enabled: true
+
+schematic:
+  grave: "schematics/grave.schem"   # schematic to paste when a grave is placed
+  override:
+    biomes:
+      - "DESERT:schematics/grave_desert.schem"
+      - "WINDSWEPT_HILLS:schematics/grave_windswept_hills.schem"
+
+paste:
+  ignore-air: true
+  offset: { x: 0, y: 0, z: 0 }      # where to paste relative to the grave location
+
+# Snapshot (backup) of the region before pasting the grave schematic
+snapshot:
+  enabled: true
+  dir: "backups"                    # where to save the per-grave .schem backups
+  use-grave-size: true              # true: backup region matches grave schematic dimensions
+  box: { x: 5, y: 4, z: 5 }         # used if use-grave-size = false
+
+# Simple block used to detect that the grave area is placed
+anchor:
+  material: "PLAYER_HEAD"
+  offset: { x: 0, y: 0, z: 0 }
