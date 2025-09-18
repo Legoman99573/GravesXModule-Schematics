@@ -15,7 +15,7 @@ import org.bukkit.plugin.ServicePriority;
  *   <li>{@link #onModuleDisable(ModuleContext)} releases the provider reference.</li>
  * </ol>
  */
-public final class SchematicsModule implements GravesXModule {
+public final class SchematicsModule extends GravesXModule {
 
     /**
      * The registered schematic provider instance, or {@code null} when disabled or not available.
@@ -45,7 +45,7 @@ public final class SchematicsModule implements GravesXModule {
         boolean hasFAWE = Bukkit.getPluginManager().getPlugin("FastAsyncWorldEdit") != null;
         if (!(hasWE || hasFAWE)) {
             ctx.getLogger().severe("[Schematics] Neither WorldEdit nor FastAsyncWorldEdit is installed.");
-            return;
+            ctx.getGravesXModules().disableModule();
         }
         provider = new WorldEditSnapshotProvider(ctx);
         ctx.registerService(GraveProvider.class, provider, ServicePriority.Normal);
