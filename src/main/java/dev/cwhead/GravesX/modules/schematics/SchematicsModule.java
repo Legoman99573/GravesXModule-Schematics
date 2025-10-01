@@ -60,5 +60,6 @@ public final class SchematicsModule extends GravesXModule {
     @Override
     public void onModuleDisable(ModuleContext ctx) {
         provider = null;
+        ctx.getLogger().info("[Schematics] Unloaded Schematics provider.");
     }
 }
